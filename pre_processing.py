@@ -36,3 +36,4 @@ def preprocess(x):
         x = example1.get_text()
                
     return x
+# %%

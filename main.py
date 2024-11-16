@@ -6,6 +6,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
 from collections import Counter
+import nltk
+from nltk.corpus import stopwords
+from pre_processing import preprocess
 
 #%%
 data = pd.read_csv('data/train.csv')
@@ -147,22 +150,39 @@ plt.legend()
 plt.show()
 
 #%%
-# Function to count unique words in a column
+# Ensure you have the stopwords downloaded
+nltk.download('stopwords')
+
+# Constants
+SAFE_DIV = 0.0001
+STOP_WORDS = set(stopwords.words("english"))
+
+# Apply preprocessing to each column
+data['question1'] = data['question1'].apply(preprocess)
+data['question2'] = data['question2'].apply(preprocess)
+
+# Define the function to count unique words excluding stopwords
 def count_unique_words(column):
-    all_words = ' '.join(column).split()
-    unique_word_counts = Counter(all_words)
-    return unique_word_counts
+  stop_words = STOP_WORDS
+  all_words = ' '.join(column).split()
+  filtered_words = [word for word in all_words if word.lower() not in stop_words]
+  unique_word_counts = Counter(filtered_words)
+  return unique_word_counts
 
 # Count unique words in each column
 q1_unique_words = count_unique_words(data['question1'])
 q2_unique_words = count_unique_words(data['question2'])
 
 # Convert Counter to DataFrame for easier manipulation and visualization
-q1_df = pd.DataFrame(q1_unique_words.items(), columns=['word', 'frequency_question1']).sort_values(by='frequency_question1', ascending=False).head(50)
-q2_df = pd.DataFrame(q2_unique_words.items(), columns=['word', 'frequency_question2']).sort_values(by='frequency_question2', ascending=False).head(50)
+q1_df = pd.DataFrame(q1_unique_words.items(), columns=['word', 'frequency_question1'])
+q2_df = pd.DataFrame(q2_unique_words.items(), columns=['word', 'frequency_question2'])
 
 # Merging the two DataFrames for comparison
 merged_df = pd.merge(q1_df, q2_df, on='word', how='outer').fillna(0)
+
+# Add total frequency column and sort by it
+merged_df['total_frequency'] = merged_df['frequency_question1'] + merged_df['frequency_question2']
+merged_df = merged_df.sort_values(by='total_frequency', ascending=False).head(50)
 
 # Plotting the data
 plt.figure(figsize=(14, 8))
@@ -179,6 +199,9 @@ plt.ylabel('Frequency')
 plt.title('Top 50 Unique Word Frequency Comparison between Question 1 and Question 2')
 plt.xticks([i + bar_width / 2 for i in index], merged_df['word'], rotation=90)
 plt.legend()
+
+# Adjust layout to prevent label cutoff
+plt.tight_layout()
 
 plt.show()
 
