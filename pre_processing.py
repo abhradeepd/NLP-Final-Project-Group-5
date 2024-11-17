@@ -19,21 +19,24 @@ def preprocess(x):
                            .replace("he's", "he is").replace("she's", "she is").replace("'s", " own")\
                            .replace("%", " percent ").replace("₹", " rupee ").replace("$", " dollar ")\
                            .replace("€", " euro ").replace("'ll", " will")
+    # Handling large numbers
     x = re.sub(r"([0-9]+)000000", r"\1m", x)
     x = re.sub(r"([0-9]+)000", r"\1k", x)
     
     
     porter = PorterStemmer()
+    # removing all the non word characters as we are going to check text similarity and it not make much sense
     pattern = re.compile('\W')
     
-    if type(x) == type(''):
-        x = re.sub(pattern, ' ', x)
+
+    x = re.sub(pattern, ' ', x)
     
-    
-    if type(x) == type(''):
-        x = porter.stem(x)
-        example1 = BeautifulSoup(x)
-        x = example1.get_text()
-               
-    return x
+    x = BeautifulSoup(x, "html.parser").get_text()
+    x_words = x.split()
+    stemmed = [porter.stem(words) for words in x_words]
+
+    final_preprocessed_words = " ".join(stemmed)
+    # removes tabs, carriage returns , from feeds and vertical tabs respectively
+    return_seq = re.sub('r[\t\r\f\v]+', ' ', final_preprocessed_words).strip()
+    return return_seq
 # %%
