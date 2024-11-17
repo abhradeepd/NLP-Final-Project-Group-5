@@ -50,6 +50,8 @@ def extract_basic_features(q1,q2):
 
 
 q1, q2 = "Which one dissolve in water quikly sugar, salt, methane and carbon di oxide?","Which fish would survive in salt water?"
+
+# Check
 print(extract_basic_features(q1,q2))
 
 
