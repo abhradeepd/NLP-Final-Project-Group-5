@@ -62,6 +62,7 @@ def process_file_and_extract_features(filename, rows_to_train):
     else:
         data = pd.read_csv('Data/train.csv')
         data = data[:rows_to_train]
+        # count of qids of question pairs
         data.dropna(subset=['question1','question2'],inplace=True)
         data['fre_qid1'] = data.groupby('qid1')['qid1'].transform('count') # frequency of qids
         data['freq_qid2'] = data.groupby('qid2')['qid2'].transform('count')
