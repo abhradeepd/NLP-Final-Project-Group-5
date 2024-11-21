@@ -104,7 +104,7 @@ def process_file_and_extract_features(filename, rows_to_train):
             if len(strs) == 0:
                 return 0
             else:
-                return len(strs[0]) / (min(len(a), len(b)) + 1)
+                return len(strs[0]) / (min(len(a), len(b)) + 1) # [lenght_of_substring/ (smaller_string+1)]
 
         #Preprocessing
         data['question1'] = data['question1'].fillna("").apply(preprocess)
@@ -130,11 +130,15 @@ def process_file_and_extract_features(filename, rows_to_train):
         data["mean_len_cw"] = list(map(lambda x: x[13], token_features))
 
         print("fuzzy features..")
-
+        # Compare sorted token and removes duplicates then similarity score (** Ignores unmatched words)
         data["token_set_ratio"] = data.apply(lambda x: fuzz.token_set_ratio(x["question1"], x["question2"]), axis=1)
+        # Sort the questions alphabetically and then check similarity score (** Penalizes for unmatched words)
         data["token_sort_ratio"] = data.apply(lambda x: fuzz.token_sort_ratio(x["question1"], x["question2"]), axis=1)
+        # Here a word to word comparison is done no sorting so (orange and apples and apples and oranges will score low) Here the edit distance is used to find similarity of tokens
         data["fuzz_ratio"] = data.apply(lambda x: fuzz.QRatio(x["question1"], x["question2"]), axis=1)
+        # This checks if one string in present inside another larger string (e.g. Jaipur pink city and Jaipur)  Here the edit distance is used to find similarity of tokens
         data["fuzz_partial_ratio"] = data.apply(lambda x: fuzz.partial_ratio(x["question1"], x["question2"]), axis=1)
+        # This is a harsher substring matcher than partial ratio as partial one accepts appx. match
         data["longest_substr_ratio"] = data.apply(lambda x: get_longest_substr_ratio(x["question1"], x["question2"]),
                                                   axis=1)
     return data
