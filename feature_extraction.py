@@ -2,6 +2,9 @@ from pre_processing import preprocess
 from nltk.corpus import stopwords
 import os
 import pandas as pd
+import distance
+from fuzzywuzzy import fuzz
+
 
 stopwords = stopwords.words('english')
 
@@ -64,14 +67,50 @@ def process_file_and_extract_features(filename, rows_to_train):
         data = data[:rows_to_train]
         # count of qids of question pairs
         data.dropna(subset=['question1','question2'],inplace=True)
-        data['fre_qid1'] = data.groupby('qid1')['qid1'].transform('count') # frequency of qids
+        data['freq_qid1'] = data.groupby('qid1')['qid1'].transform('count') # frequency of qids
         data['freq_qid2'] = data.groupby('qid2')['qid2'].transform('count')
         data['q1len'] = data['question1'].str.len() # number character of the questions
         data['q2len'] = data['question2'].str.len()
         data['q1_n_words'] = data['question1'].apply(lambda row: len(row.split(" "))) # number of words
         data['q2_n_words'] = data['question2'].apply(lambda row: len(row.split(" ")))
-        print("token features...")
 
+
+
+
+        data['fre_q1-q2'] = abs(data['freq_qid1'] - data['freq_qid2'])
+        data['freq_q1+q2'] = data['freq_qid1'] + data['freq_qid2']
+
+        def normalized_word_Common(row):
+            w1 = set(map(lambda word: word.lower().strip(), row['question1'].split(" ")))
+            w2 = set(map(lambda word: word.lower().strip(), row['question2'].split(" ")))
+            return 1.0 * len(w1 & w2) # for intersection
+
+        data['word_Common'] = data.apply(normalized_word_Common, axis=1)
+        def normalized_word_Total(row):
+            w1 = set(map(lambda word: word.lower().strip(), row['question1'].split(" ")))
+            w2 = set(map(lambda word: word.lower().strip(), row['question2'].split(" ")))
+            return 1.0 * (len(w1)+len(w2))
+        data['word_Total'] = data.apply(normalized_word_Total,axis=1)
+
+        def normalized_word_share(row):
+            w1 = set(map(lambda word: word.lower().strip(), row['question1'].split(" ")))
+            w2 = set(map(lambda word: word.lower().strip(), row['question2'].split(" ")))
+            return 1.0 * len(w1 & w2) / (len(w1) + len(w2))  # [common words / total words]
+
+        data['word_share'] = data.apply(normalized_word_share, axis=1)
+
+        def get_longest_substr_ratio(a, b):
+            strs = list(distance.lcsubstrings(a, b))
+            if len(strs) == 0:
+                return 0
+            else:
+                return len(strs[0]) / (min(len(a), len(b)) + 1)
+
+        #Preprocessing
+        data['question1'] = data['question1'].fillna("").apply(preprocess)
+        data['question2'] = data['question2'].fillna("").apply(preprocess)
+
+        print("token features...")
         # Merging Features with dataset
         token_features = data.apply(lambda x: extract_basic_features(x["question1"], x["question2"]), axis=1)
 
@@ -89,6 +128,15 @@ def process_file_and_extract_features(filename, rows_to_train):
         data["last_word_eq_cw"] = list(map(lambda x: x[11], token_features))
         data["abs_len_diff_cw"] = list(map(lambda x: x[12], token_features))
         data["mean_len_cw"] = list(map(lambda x: x[13], token_features))
+
+        print("fuzzy features..")
+
+        data["token_set_ratio"] = data.apply(lambda x: fuzz.token_set_ratio(x["question1"], x["question2"]), axis=1)
+        data["token_sort_ratio"] = data.apply(lambda x: fuzz.token_sort_ratio(x["question1"], x["question2"]), axis=1)
+        data["fuzz_ratio"] = data.apply(lambda x: fuzz.QRatio(x["question1"], x["question2"]), axis=1)
+        data["fuzz_partial_ratio"] = data.apply(lambda x: fuzz.partial_ratio(x["question1"], x["question2"]), axis=1)
+        data["longest_substr_ratio"] = data.apply(lambda x: get_longest_substr_ratio(x["question1"], x["question2"]),
+                                                  axis=1)
     return data
 
 
