@@ -106,6 +106,24 @@ def process_file_and_extract_features(filename, rows_to_train):
             else:
                 return len(strs[0]) / (min(len(a), len(b)) + 1) # [lenght_of_substring/ (smaller_string+1)]
 
+        def longest_common_subsequence(q1, q2):
+            # Function to calculate Longest Common Subsequence
+            seq1 = list(q1)
+            seq2 = list(q2)
+
+            m, n = len(seq1), len(seq2)
+            dp = [[0] * (n + 1) for _ in range(m + 1)]
+
+            for i in range(1, m + 1):
+                for j in range(1, n + 1):
+                    if seq1[i - 1] == seq2[j - 1]:
+                        dp[i][j] = dp[i - 1][j - 1] + 1
+                    else:
+                        dp[i][j] = max(dp[i - 1][j], dp[i][j - 1])
+            lenght_lcs= dp[m][n]
+
+            return lenght_lcs/(max(len(seq1),len(seq2))+1) # Return noramlized common subsequnce length
+
         #Preprocessing
         data['question1'] = data['question1'].fillna("").apply(preprocess)
         data['question2'] = data['question2'].fillna("").apply(preprocess)
@@ -141,6 +159,10 @@ def process_file_and_extract_features(filename, rows_to_train):
         # This is a harsher substring matcher than partial ratio as partial one accepts appx. match
         data["longest_substr_ratio"] = data.apply(lambda x: get_longest_substr_ratio(x["question1"], x["question2"]),
                                                   axis=1)
+
+        print("Common Subsequence")
+        # Finds the largest common subsequence
+        data["largest_common_subsequence"] = data.apply(lambda x: longest_common_subsequence(x["question1"], x["question2"]),axis=1)
     return data
 
 
