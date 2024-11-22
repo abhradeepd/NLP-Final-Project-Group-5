@@ -85,4 +85,5 @@ df['q2_feats_bert'] = list(vecs2)
 # %% Output the DataFrame
 print(df[['question1', 'question2', 'q1_feats_bert', 'q2_feats_bert']])
 #%%
-print(df.columns)
+df.to_csv('Data/bert_embeddings.csv', index=False)
+
