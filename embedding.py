@@ -5,19 +5,14 @@ from torch.utils.data import Dataset, DataLoader
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
+import os
 
-# %% Importing the data
-df = pd.read_csv('Data/train.csv')
-print(len(df))
-# Use a subset of the data for demonstration
-num_rows = len(df)
-df = df[:num_rows]
-#%%
-print(df.head())
-#%%
+# %% Import the data
+df = pd.read_csv('Data/df_with_features.csv')
+
 # Ensure all questions are strings
-df['question1'] = df['question1'].apply(lambda x: str(x))
-df['question2'] = df['question2'].apply(lambda x: str(x))
+df['question1'] = df['question1'].astype(str)
+df['question2'] = df['question2'].astype(str)
 
 # %% Initialize BERT tokenizer and model
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -43,7 +38,6 @@ dataloader = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 # %% Function to compute BERT embeddings for a batch
 def compute_batch_embeddings(batch_sentences):
-    # Tokenize and encode the batch of sentences
     inputs = tokenizer(
         batch_sentences,
         return_tensors="pt",
@@ -58,7 +52,7 @@ def compute_batch_embeddings(batch_sentences):
         # Extract the [CLS] token embeddings
         cls_embeddings = outputs.last_hidden_state[:, 0, :]  # Shape: (batch_size, hidden_size)
 
-    return cls_embeddings.cpu().numpy()  # Convert to NumPy array
+    return cls_embeddings.cpu().numpy()
 
 # %% Compute embeddings for question1 and question2 in batches
 vecs1 = []
@@ -74,16 +68,29 @@ for batch in tqdm(dataloader, desc="Processing Batches"):
     vecs1.append(vecs1_batch)
     vecs2.append(vecs2_batch)
 
-# Combine all batches into single arrays
-vecs1 = np.vstack(vecs1)
+# Combine all batches into single NumPy arrays
+vecs1 = np.vstack(vecs1)  # Shape: (num_rows, hidden_size)
 vecs2 = np.vstack(vecs2)
 
-# Add BERT embeddings to the DataFrame
-df['q1_feats_bert'] = list(vecs1)
-df['q2_feats_bert'] = list(vecs2)
+# %% Save embeddings to .pt format with IDs
+output_path = 'Data/bert_embeddings.pt'
+os.makedirs('Data', exist_ok=True)  # Ensure the directory exists
 
-# %% Output the DataFrame
-print(df[['question1', 'question2', 'q1_feats_bert', 'q2_feats_bert']])
-#%%
-df.to_csv('Data/bert_embeddings.csv', index=False)
+# Prepare data for saving
+data_to_save = {
+    'id': torch.tensor(df['id'].values),  # Include original IDs
+    'q1_feats_bert': torch.tensor(vecs1),  # Embeddings for question1
+    'q2_feats_bert': torch.tensor(vecs2)   # Embeddings for question2
+}
 
+# Save to .pt format
+torch.save(data_to_save, output_path)
+
+print(f"BERT embeddings with IDs saved to {output_path}")
+
+# %% Verify saved data
+loaded_data = torch.load(output_path)
+print("Loaded Data Keys:", loaded_data.keys())
+print("First ID:", loaded_data['id'][0])
+print("First Question1 Embedding Shape:", loaded_data['q1_feats_bert'][0].shape)
+print("First Question2 Embedding Shape:", loaded_data['q2_feats_bert'][0].shape)
