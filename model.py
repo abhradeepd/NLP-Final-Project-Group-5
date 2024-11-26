@@ -1,7 +1,12 @@
 import pandas as pd
 import numpy as np
 import torch
-
+from algorithms.logistic_regression import logistic_regression_function
+from sklearn.metrics import log_loss
+from sklearn.model_selection import train_test_split
+import matplotlib.pyplot as plt
+import seaborn as sns
+#
 # Debugging Function
 def debug_print(message, data=None):
     """Helper function to print debugging information."""
@@ -100,3 +105,101 @@ except Exception as e:
     raise
 
 print(result.shape)
+
+df = pd.read_csv("Data/final_features.csv", encoding='latin-1')
+
+df = df.applymap(lambda x: np.nan if not pd.api.types.is_numeric_dtype(type(x)) and not isinstance(x, (int, float, np.number)) else x)
+print(df.shape)
+# Check if there are any NA values in the DataFrame
+if df.isna().any().any():
+    print("Non-numeric values replaced with NaN.")
+else:
+    print("No non-numeric values found.")
+
+
+df = df.drop(columns=['Unnamed: 0'])
+
+# Get the target variable
+y_true = df['is_duplicate']
+df.drop(['id', 'is_duplicate'], axis=1, inplace=True)
+print(df.shape)
+
+# Convert all the features into numeric
+cols = list(df.columns)
+for i in cols:
+    df[i] = pd.to_numeric(df[i], errors='coerce')
+
+# Convert y_true to a list of integers
+y_true = list(map(int, y_true.values))
+
+# Display the first few rows of the data
+print(df.head())
+
+X_train,X_test, y_train, y_test = train_test_split(df, y_true, stratify=y_true, test_size=0.3)
+
+# Convert lists to DataFrames if they are not already
+X_train = pd.DataFrame(X_train)
+X_test = pd.DataFrame(X_test)
+y_train = pd.DataFrame(y_train)
+y_test = pd.DataFrame(y_test)
+
+# Create a DataFrame to display the sizes of the splits
+split_sizes = pd.DataFrame({
+    'Data Split': ['X_train', 'X_test', 'y_train', 'y_test'],
+    'Size': [X_train.shape[0], X_test.shape[0], y_train.shape[0], y_test.shape[0]]
+})
+
+# Display the split sizes in tabular format
+print("Size of Data Splits:")
+print(split_sizes)
+
+# Print head(5) for each split
+print("Head of X_train:")
+print(X_train.head())
+
+print("\nHead of X_test:")
+print(X_test.head())
+
+print("\nHead of y_train:")
+print(y_train.head())
+
+print("\nHead of y_test:")
+print(y_test.head())
+
+# Plotting the distribution of the output variable in train data
+plt.figure(figsize=(12, 6))
+plt.subplot(1, 2, 1)
+sns.countplot(x=y_train.iloc[:, 0])
+plt.title('Distribution of Output Variable in Train Data')
+
+# Plotting the distribution of the output variable in test data
+plt.subplot(1, 2, 2)
+sns.countplot(x=y_test.iloc[:, 0])
+plt.title('Distribution of Output Variable in Test Data')
+
+plt.show()
+
+## Random model as baseline
+
+# Set seed for reproducibility
+np.random.seed(42)
+
+# Generate random probability predictions for y_train
+random_predictions_train = np.random.rand(len(y_train))
+
+# Calculate log loss for y_train
+log_loss_train = log_loss(y_train, random_predictions_train)
+
+print(f'Log Loss for Training Data: {log_loss_train:.5f}')
+
+# Generate random probability predictions for y_test
+random_predictions_test = np.random.rand(len(y_test))
+
+# Calculate log loss for y_test
+log_loss_test = log_loss(y_test, random_predictions_test)
+
+print(f'Log Loss for Test Data: {log_loss_test:.5f}')
+print("done")
+##
+# Call the logistic regression function
+logistic_regression_function(X_train, X_test, y_train, y_test)
