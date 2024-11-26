@@ -1,55 +1,59 @@
+from numba.tests.test_extending import print_usecase
+
 from pre_processing import preprocess
 from nltk.corpus import stopwords
 import os
 import pandas as pd
 import distance
 from fuzzywuzzy import fuzz
-
+from nltk.metrics import jaccard_distance
 
 stopwords = stopwords.words('english')
 
 DIV_ERROR = .000001
+df = pd.read_csv("Data/train.csv", encoding='latin-1')
 
-def extract_basic_features(q1,q2):
+
+def extract_basic_features(q1, q2):
     feature_tokens = [0.0] * 14
     q1_tokens = q1.split()
     q2_tokens = q2.split()
+
     if len(q1_tokens) == 0 or len(q2_tokens) == 0:
         return feature_tokens
-    q1_non_stop_words = set([words for words in q1_tokens if words not in stopwords])
-    q2_non_stop_words = set([words for words in q2_tokens if words not in stopwords])
 
-    q1_stopwords = set([words for words in q1_tokens if words in stopwords])
-    q2_stopwords = set([words for words in q2_tokens if words in stopwords])
+    q1_non_stop_words = list(set([word for word in q1_tokens if word not in stopwords]))
+    q2_non_stop_words = list(set([word for word in q2_tokens if word not in stopwords]))
 
-    # common word count
-    common_word_len = len(q1_non_stop_words.intersection(q2_non_stop_words))
+    q1_stopwords = set([word for word in q1_tokens if word in stopwords])
+    q2_stopwords = set([word for word in q2_tokens if word in stopwords])
 
-    # common stopword count
+    # Common word and token calculations
+    common_word_len = len(set(q1_non_stop_words).intersection(set(q2_non_stop_words)))
     common_stop_word_len = len(q1_stopwords.intersection(q2_stopwords))
-
-    # common token count
     common_token = len(set(q1_tokens).intersection(set(q2_tokens)))
 
-    q1_non_stop_words = list(q1_non_stop_words)
-    q2_non_stop_words = list(q2_non_stop_words)
+    # Prevent division by zero and calculate features
+    feature_tokens[0] = common_word_len / (min(len(q1_non_stop_words), len(q2_non_stop_words)) + DIV_ERROR)
+    feature_tokens[1] = common_word_len / (max(len(q1_non_stop_words), len(q2_non_stop_words)) + DIV_ERROR)
+    feature_tokens[2] = common_stop_word_len / (max(len(q1_stopwords), len(q2_stopwords)) + DIV_ERROR)
+    feature_tokens[3] = common_stop_word_len / (min(len(q1_stopwords), len(q2_stopwords)) + DIV_ERROR)
+    feature_tokens[4] = common_token / (max(len(q1_tokens), len(q2_tokens)) + DIV_ERROR)
+    feature_tokens[5] = common_token / (min(len(q1_tokens), len(q2_tokens)) + DIV_ERROR)
 
-    # Features based on the size of the questions
-    feature_tokens[0] = common_word_len / (min(len(q1_non_stop_words), len(q2_non_stop_words)) + DIV_ERROR) # common_minimum_words
-    feature_tokens[1] = common_word_len / (max(len(q1_non_stop_words), len(q2_non_stop_words))+DIV_ERROR) # common_maximum_word
-    feature_tokens[2] = common_stop_word_len / (max(len(q1_stopwords), len(q2_stopwords))+DIV_ERROR) # common stopword max
-    feature_tokens[3] = common_stop_word_len / (min(len(q1_stopwords), len(q2_stopwords)) + DIV_ERROR) # common stopword min
-    feature_tokens[4] = common_token / (max(len(q1_tokens), len(q2_tokens))+DIV_ERROR) # common token max
-    feature_tokens[5] = common_token / (min(len(q1_tokens), len(q2_tokens)) + DIV_ERROR) # common token min
-    feature_tokens[6] = int(q2_tokens[0] == q1_tokens[0]) # common first token
-    feature_tokens[7] = int(q2_tokens[-1] == q1_tokens[-1]) # common_last_token
-    feature_tokens[8] = abs(len(q1_tokens) - len(q2_tokens)) #abs token size diff
-    feature_tokens[9] = (len(set(q1_tokens)) + len(set(q2_tokens)))/2 # mean token size
-    #non stop words
-    feature_tokens[10] = int(q1_non_stop_words[0] == q2_non_stop_words[0])  # common first words
-    feature_tokens[11] = int(q1_non_stop_words[-1] == q2_non_stop_words[-1])  # common_last_words
-    feature_tokens[12] = abs(len(q1_non_stop_words) - len(q2_non_stop_words))  # abs words size diff
-    feature_tokens[13] = (len(set(q1_non_stop_words)) + len(set(q2_non_stop_words))) / 2  # mean words size
+    # Check for empty lists before accessing elements
+    feature_tokens[6] = int(len(q1_tokens) > 0 and len(q2_tokens) > 0 and q1_tokens[0] == q2_tokens[0])
+    feature_tokens[7] = int(len(q1_tokens) > 0 and len(q2_tokens) > 0 and q1_tokens[-1] == q2_tokens[-1])
+    feature_tokens[8] = abs(len(q1_tokens) - len(q2_tokens))
+    feature_tokens[9] = (len(set(q1_tokens)) + len(set(q2_tokens))) / 2
+
+    # Non-stop words checks
+    feature_tokens[10] = int(
+        len(q1_non_stop_words) > 0 and len(q2_non_stop_words) > 0 and q1_non_stop_words[0] == q2_non_stop_words[0])
+    feature_tokens[11] = int(
+        len(q1_non_stop_words) > 0 and len(q2_non_stop_words) > 0 and q1_non_stop_words[-1] == q2_non_stop_words[-1])
+    feature_tokens[12] = abs(len(q1_non_stop_words) - len(q2_non_stop_words))
+    feature_tokens[13] = (len(set(q1_non_stop_words)) + len(set(q2_non_stop_words))) / 2
 
     return feature_tokens
 
@@ -124,6 +128,41 @@ def process_file_and_extract_features(filename, rows_to_train):
 
             return lenght_lcs/(max(len(seq1),len(seq2))+1) # Return noramlized common subsequnce length
 
+        def ratio_of_question_lengths(q1, q2):
+            # Function to calculate the ratio of question lengths
+            len_q1 = len(str(q1))
+            len_q2 = len(str(q2))
+
+            if len_q2 == 0:
+                return 0.0
+
+            return len_q1 / len_q2
+
+        def common_prefix(q1, q2):
+            # Function to find the length of the common prefix
+            i = 0
+            while i < min(len(q1), len(q2)) and q1[i] == q2[i]:
+                i += 1
+            return i
+
+        def common_suffix(q1, q2):
+            # Function to find the length of the common suffix
+            i, j = len(q1) - 1, len(q2) - 1
+            while i >= 0 and j >= 0 and q1[i] == q2[j]:
+                i -= 1
+                j -= 1
+            return len(q1) - i - 1
+
+        def jaccard_similarity(q1, q2):
+            # Function to calculate Jaccard's Similarity
+            q1_tokens = set(q1.split())
+            q2_tokens = set(q2.split())
+
+            if not q1_tokens or not q2_tokens:
+                return 0.0
+
+            return 1.0 - jaccard_distance(q1_tokens, q2_tokens)
+
         #Preprocessing
         data['question1'] = data['question1'].fillna("").apply(preprocess)
         data['question2'] = data['question2'].fillna("").apply(preprocess)
@@ -163,9 +202,16 @@ def process_file_and_extract_features(filename, rows_to_train):
         print("Common Subsequence")
         # Finds the largest common subsequence
         data["largest_common_subsequence"] = data.apply(lambda x: longest_common_subsequence(x["question1"], x["question2"]),axis=1)
+        data['ratio_q_lengths'] = data.apply(lambda row: ratio_of_question_lengths(row['question1'], row['question2']), axis=1)
+        data['common_prefix'] = data.apply(lambda row: common_prefix(row['question1'], row['question2']), axis=1)
+        data['common_suffix'] = data.apply(lambda row: common_suffix(row['question1'], row['question2']), axis=1)
+        data['diff_words'] = data.apply(lambda row: abs(row['q1_n_words'] - row['q2_n_words']), axis=1)
+        data['diff_chars'] = data.apply(lambda row: abs(len(str(row['question1'])) - len(str(row['question2']))), axis=1)
+        data['jaccard_similarity'] = data.apply(lambda row: jaccard_similarity(row['question1'], row['question2']), axis=1)
     return data
 
+print(len(df))
+k=process_file_and_extract_features('train.csv',rows_to_train=len(df))
+k.to_csv('Data/df_with_features.csv',index=False)
 
-k=process_file_and_extract_features('train.csv',5)
-print(k)
-
+print(k.columns)
