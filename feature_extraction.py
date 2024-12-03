@@ -15,8 +15,10 @@ def extract_basic_features(q1,q2):
     feature_tokens = [0.0] * 14
     q1_tokens = q1.split()
     q2_tokens = q2.split()
+    
     if len(q1_tokens) == 0 or len(q2_tokens) == 0:
         return feature_tokens
+    
     q1_non_stop_words = set([words for words in q1_tokens if words not in stopwords])
     q2_non_stop_words = set([words for words in q2_tokens if words not in stopwords])
 
@@ -47,8 +49,12 @@ def extract_basic_features(q1,q2):
     feature_tokens[8] = abs(len(q1_tokens) - len(q2_tokens)) #abs token size diff
     feature_tokens[9] = (len(set(q1_tokens)) + len(set(q2_tokens)))/2 # mean token size
     #non stop words
-    feature_tokens[10] = int(q1_non_stop_words[0] == q2_non_stop_words[0])  # common first words
-    feature_tokens[11] = int(q1_non_stop_words[-1] == q2_non_stop_words[-1])  # common_last_words
+    # feature_tokens[10] = int(q1_non_stop_words[0] == q2_non_stop_words[0])  # common first words
+    # feature_tokens[11] = int(q1_non_stop_words[-1] == q2_non_stop_words[-1])  # common_last_words
+    feature_tokens[10] = int(
+        len(q1_non_stop_words) > 0 and len(q2_non_stop_words) > 0 and q1_non_stop_words[0] == q2_non_stop_words[0])
+    feature_tokens[11] = int(
+        len(q1_non_stop_words) > 0 and len(q2_non_stop_words) > 0 and q1_non_stop_words[-1] == q2_non_stop_words[-1])
     feature_tokens[12] = abs(len(q1_non_stop_words) - len(q2_non_stop_words))  # abs words size diff
     feature_tokens[13] = (len(set(q1_non_stop_words)) + len(set(q2_non_stop_words))) / 2  # mean words size
 
@@ -128,6 +134,7 @@ def process_file_and_extract_features(filename, rows_to_train):
     
     
     data = data[:rows_to_train]
+    print(len(data))
     # count of qids of question pairs
     data.dropna(subset=['question1','question2'],inplace=True)
     data['freq_qid1'] = data.groupby('qid1')['qid1'].transform('count') # frequency of qids
@@ -239,7 +246,7 @@ def process_file_and_extract_features(filename, rows_to_train):
     data['jaccard_similarity'] = data.apply(lambda row: jaccard_similarity(row['question1'], row['question2']), axis=1)
 
     
-    print("updated1")
+    print("updated3")
     return data
 
 

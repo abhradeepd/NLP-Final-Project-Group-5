@@ -10,6 +10,8 @@ import nltk
 from nltk.corpus import stopwords
 from pre_processing import preprocess
 #%%
+from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization
+ #%%
 from feature_extraction import process_file_and_extract_features
 
 #%%
@@ -247,6 +249,8 @@ plt.legend()
 # Display the plot
 plt.tight_layout()
 plt.show()
+#%%
+len(data)
 # %%
 import importlib
 import feature_extraction
@@ -256,7 +260,7 @@ from feature_extraction import process_file_and_extract_features
 
 filename = r'Data\train.csv'
 if os.path.isfile(filename):
-    data_features = process_file_and_extract_features(filename,1000)
+    data_features = process_file_and_extract_features(filename,len(data)-1)
 else:
     print("File not found")
 #%%
@@ -265,7 +269,8 @@ data_features.columns
 import visualise
 importlib.reload(visualise)
 #Fucntion to vislaise violin and density plots for each feature in one image
-from visualise import violin_density_plot_each_feature
+from visualise import violin_density_plot_each_feature,kl_divergence_visualise,plot_for_top_5_features
+#%%
 features_to_plot = ['freq_qid1', 'freq_qid2', 'q1len', 'q2len', 'q1_n_words', 'q2_n_words',
                     'word_Common', 'word_Total', 'word_share', 'freq_q1+q2', 'freq_q1-q2',
                     'ratio_q_lengths', 'common_prefix', 'common_suffix', 'diff_words', 'diff_chars',
@@ -275,7 +280,27 @@ features_to_plot = ['freq_qid1', 'freq_qid2', 'q1len', 'q2len', 'q1_n_words', 'q
                     'longest_substr_ratio']
 
 
+#%%
 violin_density_plot_each_feature(data_features,features_to_plot)
+#%%
+data_features.columns
 
+# %%
+kl_divergence_results = kl_divergence_visualise(data_features,features_to_plot)
+#%%
+kl_divergence_results
+
+
+# %%
+plot_for_top_5_features(data_features,kl_divergence_results)
+#%%
+data_features.columns
+# %%
+from importlib import reload
+import ml_algorithms.tSNE_for_data_visualization  # Import the module
+reload(ml_algorithms.tSNE_for_data_visualization)  # Force reload the module
+from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization  # Import the specific function
+#%%
+plot_tsne_visualization(data_features)
 
 # %%
