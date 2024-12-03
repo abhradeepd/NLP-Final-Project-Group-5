@@ -114,7 +114,7 @@ def xgboost_function(
     )
     ax[1].set_title("Confusion Matrix (Percentages)")
     ax[1].set_xlabel("Predicted")
-    ax[1].set_ylabel("Actual")  # Correctly set the ylabel for the second subplot
+    ax[1].set_ylabel("Actual")
 
     plt.tight_layout()
     plt.show()
