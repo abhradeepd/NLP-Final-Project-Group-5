@@ -9,13 +9,12 @@ from collections import Counter
 import nltk
 from nltk.corpus import stopwords
 from pre_processing import preprocess
-#%%
 from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization
- #%%
+#%%
 from feature_extraction import process_file_and_extract_features
 
 #%%
-data = pd.read_csv('data/train.csv')
+data = pd.read_csv('Data/train.csv')
 
 #%%
 data.head(5)
@@ -297,8 +296,8 @@ plot_for_top_5_features(data_features,kl_divergence_results)
 data_features.columns
 # %%
 from importlib import reload
-import ml_algorithms.tSNE_for_data_visualization  # Import the module
-reload(ml_algorithms.tSNE_for_data_visualization)  # Force reload the module
+import ml_algorithms.tSNE_for_data_visualization
+reload(ml_algorithms.tSNE_for_data_visualization)
 from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization  # Import the specific function
 #%%
 plot_tsne_visualization(data_features)
