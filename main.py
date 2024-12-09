@@ -13,11 +13,17 @@ from pre_processing import preprocess
 from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization
  #%%
 from feature_extraction import process_file_and_extract_features
+from quiz import train
 
 #%%
-data = pd.read_csv('data/train.csv')
+data = pd.read_csv('Data/train.csv')
 
 #%%
+pd.set_option('display.max_rows', None)
+
+# Display all columns
+pd.set_option('display.max_columns', None)
+
 data.head(5)
 
 # %%
@@ -258,7 +264,8 @@ importlib.reload(feature_extraction)
 from feature_extraction import process_file_and_extract_features
 #%%
 
-filename = r'Data\train.csv'
+filename = 'Data/train.csv'
+# filename = r'/home/ubuntu/NLP-Final_Project-Group-5/NLP-Final-Project-Group-5/Data/train.csv'
 if os.path.isfile(filename):
     data_features = process_file_and_extract_features(filename,len(data)-1)
 else:
@@ -267,7 +274,7 @@ else:
 data_features.columns
 #%%
 import visualise
-importlib.reload(visualise)
+# importlib.reload(visualise)
 #Fucntion to vislaise violin and density plots for each feature in one image
 from visualise import violin_density_plot_each_feature,kl_divergence_visualise,plot_for_top_5_features
 #%%
@@ -295,6 +302,10 @@ kl_divergence_results
 plot_for_top_5_features(data_features,kl_divergence_results)
 #%%
 data_features.columns
+#%%
+data_features.to_csv('data_with_features.csv')
+#%%
+
 # %%
 from importlib import reload
 import ml_algorithms.tSNE_for_data_visualization  # Import the module
@@ -304,3 +315,126 @@ from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization  #
 plot_tsne_visualization(data_features)
 
 # %%
+######
+data_features.shape
+#%%
+df = pd.read_csv('Data/train.csv')
+df.head(4)
+#%%
+import importlib
+import tfidf_new
+importlib.reload(tfidf_new)
+#%%
+data_features = pd.read_csv('data_with_features.csv')
+#%%
+data_features.columns
+# df.shape
+#%%
+from tfidf_new import tfidf_calculate,final_feature_creation
+df_with_tfidf_vectors = tfidf_calculate(df)
+#%%
+df_with_tfidf_vectors.columns
+#%%
+df_with_tfidf_vectors.to_csv('tfidf_vectors_genrated_new.csv')
+#%%
+final_features = final_feature_creation(data_features,df_with_tfidf_vectors)
+final_features.shape
+#%%
+final_features.shape
+#%%
+final_features.to_csv('final_features_generated_new.csv')
+#%%
+final_features = pd.read_csv('final_features_generated_new.csv')
+final_features.shape
+#%%
+# print(f'from final features of tfidf {final_features.shape}')
+# print(f'reading final df from saved final features {final_df.shape}')
+
+#%%
+# Replace non-numeric values with NaN
+# final_df.replace({col: {'_x': np.nan} for col in data.columns}, inplace=True)
+
+# Check if there are any NA values in the DataFrame
+if final_features.isna().any().any():
+    print("NA Values Present")
+else:
+    print("No NA Values Present")
+
+# Check the number of NaN values in each column after replacement
+nan_counts = final_features.isna().sum()
+print("Number of NaN values in each column after replacement:")
+print(nan_counts)
+#%%
+final_df_ex = final_features.copy(deep=True)
+final_df_ex.shape
+#%%
+final_df_ex.columns
+#%%
+# Get the target variable
+y_true = final_df_ex['is_duplicate']
+final_df_ex.drop(['Unnamed: 0.1','Unnamed: 0','id', 'is_duplicate'], axis=1, inplace=True)
+print(f'final df shape {final_df_ex.shape}')
+
+#%%
+
+# Convert all the features into numeric
+cols = list(final_df_ex.columns)
+for i in cols:
+    final_df_ex[i] = pd.to_numeric(final_df_ex[i], errors='coerce')
+
+print(final_df_ex.shape)
+print(final_df_ex.head())
+#%%
+# Check for NA Values
+if final_df_ex.isna().any().any():
+    print("NA Values Present")
+else:
+    print("No NA Values Present")
+# Check the number of NaN values in each column after conversion
+nan_counts_after_conversion = final_df_ex.isna().sum()
+print("Number of NaN values in each column after conversion:")
+print(nan_counts_after_conversion)
+
+# Convert y_true to a list of integers
+y_true = list(map(int, y_true.values))
+
+# Display the first few rows of the data
+final_df_ex.head()
+#%%
+from train_test_split_and_random_model import splitting,distribution_outputvariable_train_test
+X_train, X_test, y_train, y_test = splitting(final_df_ex,y_true,test_size=0.3)
+#%%
+distribution_outputvariable_train_test(y_train,y_test)
+#%%
+import importlib
+import train_test_split_and_random_model
+importlib.reload(train_test_split_and_random_model)
+from train_test_split_and_random_model import random_model
+random_model(y_train,y_test)
+#%%
+from importlib import reload
+import ml_algorithms.Logistic_Regression  # Import the module
+reload(ml_algorithms.Logistic_Regression)  # Force reload the module
+from ml_algorithms.Logistic_Regression import logistic_regression_function
+#%%
+logistic_regression_function(X_train,X_test,y_train,y_test)
+#%%
+import ml_algorithms.SGDClassfier_RandomSearch  # Import the module
+reload(ml_algorithms.SGDClassfier_RandomSearch)  # Force reload the module
+from ml_algorithms.SGDClassfier_RandomSearch import sgd_random_search_v1
+sgd_random_search_v1(X_train,X_test,y_train.values.ravel(), y_test.values.ravel())
+#%%
+import ml_algorithms.NaiveBayes
+reload(ml_algorithms.NaiveBayes)
+from ml_algorithms.NaiveBayes import naive_bayes_function
+#%%
+naive_bayes_function(X_train,X_test,y_train, y_test)
+#%%
+import ml_algorithms.XGBoost_Random_Search
+reload(ml_algorithms.XGBoost_Random_Search)
+from ml_algorithms.XGBoost_Random_Search import xgboost_random_search
+#%%
+xgboost_random_search(X_train,X_test,y_train,y_test)
+#%%
+from ml_algorithms.RandomForest import random_forest_random_search
+random_forest_random_search(X_train,X_test,y_train,y_test)
