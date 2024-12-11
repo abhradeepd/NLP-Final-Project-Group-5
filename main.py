@@ -258,13 +258,15 @@ importlib.reload(feature_extraction)
 from feature_extraction import process_file_and_extract_features
 #%%
 
-filename = r'Data\train.csv'
+filename = '/Users/abhradeepdas/Desktop/NLP Project/NLP-Final-Project-Group-5/Data/train.csv'
 if os.path.isfile(filename):
     data_features = process_file_and_extract_features(filename,len(data)-1)
 else:
     print("File not found")
 #%%
 data_features.columns
+data_features.to_csv()
+
 #%%
 import visualise
 importlib.reload(visualise)
@@ -303,4 +305,4 @@ from ml_algorithms.tSNE_for_data_visualization import plot_tsne_visualization  #
 #%%
 plot_tsne_visualization(data_features)
 
-# %%
+    #%%
