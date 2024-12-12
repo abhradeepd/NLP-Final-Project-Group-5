@@ -1,7 +1,6 @@
 import os
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
 from tqdm import tqdm
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import f1_score, cohen_kappa_score
@@ -9,7 +8,12 @@ from sklearn.metrics import f1_score, cohen_kappa_score
 import torch
 import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from transformers import BertModel, BertTokenizer
+from transformers import AutoTokenizer
+from torch.optim import AdamW
+
+from sentence_transformers import SentenceTransformer
+import matplotlib.pyplot as plt
+
 
 # ============================================================
 # Dataset
@@ -18,7 +22,7 @@ class SiameseQuestionsDataset(Dataset):
     def __init__(self, questions1, questions2, labels, tokenizer, max_len=128):
         """
         Dataset for pairs of questions and binary labels.
-        Tokenizes and encodes questions on-the-fly.
+        We will tokenize and encode on-the-fly.
         """
         self.questions1 = questions1
         self.questions2 = questions2
@@ -62,52 +66,10 @@ class SiameseQuestionsDataset(Dataset):
             'label': torch.tensor(label, dtype=torch.float)
         }
 
+
 # ============================================================
 # Model
 # ============================================================
-class SiameseBertModel(nn.Module):
-    def __init__(self, bert_model_name='bert-base-uncased', fine_tune_layers=3):
-        super(SiameseBertModel, self).__init__()
-        self.bert = BertModel.from_pretrained(bert_model_name)
-
-        # Freeze all layers initially
-        for param in self.bert.parameters():
-            param.requires_grad = False
-
-        # Unfreeze the last `fine_tune_layers` encoder layers
-        for layer in self.bert.encoder.layer[-fine_tune_layers:]:
-            for param in layer.parameters():
-                param.requires_grad = True
-
-        # Fully connected layer for dimensionality reduction
-        self.fc = nn.Sequential(
-            nn.Linear(self.bert.config.hidden_size, 256),
-            nn.ReLU(),
-            nn.Dropout(0.1),
-            nn.Linear(256, 128)
-        )
-
-    def forward(self, q1_input_ids, q1_attention_mask, q2_input_ids, q2_attention_mask):
-        # Encode question 1
-        q1_outputs = self.bert(
-            input_ids=q1_input_ids,
-            attention_mask=q1_attention_mask
-        )
-        q1_cls = q1_outputs.last_hidden_state[:, 0, :]  # CLS token embedding
-
-        # Encode question 2
-        q2_outputs = self.bert(
-            input_ids=q2_input_ids,
-            attention_mask=q2_attention_mask
-        )
-        q2_cls = q2_outputs.last_hidden_state[:, 0, :]
-
-        # Reduce dimensions using the fully connected layer
-        q1_embeddings = self.fc(q1_cls)
-        q2_embeddings = self.fc(q2_cls)
-
-        return q1_embeddings, q2_embeddings
-
 class ContrastiveLoss(nn.Module):
     def __init__(self, margin=1.0):
         """
@@ -137,12 +99,79 @@ class ContrastiveLoss(nn.Module):
         # Return batch mean loss
         return losses.mean()
 
+
+import torch
+import torch.nn as nn
+from sentence_transformers import SentenceTransformer
+
+
+class SiameseSentenceBertModel(nn.Module):
+    def __init__(self, model_name='sentence-transformers/all-MiniLM-L6-v2', hidden_dim=384):
+        super(SiameseSentenceBertModel, self).__init__()
+        # Load a sentence transformer model
+        self.model = SentenceTransformer(model_name)
+
+        # Access the underlying transformer model
+        transformer = self.model[0].auto_model  # This accesses the Hugging Face model inside SentenceTransformer
+
+        # Freeze all parameters
+        for param in transformer.parameters():
+            param.requires_grad = False
+
+        # Unfreeze the last two transformer layers
+        # all-MiniLM-L6-v2 has 6 layers indexed from 0 to 5.
+        for param in transformer.encoder.layer[4].parameters():
+            param.requires_grad = True
+        for param in transformer.encoder.layer[5].parameters():
+            param.requires_grad = True
+
+        # If a pooler exists, unfreeze it (depending on the model architecture).
+        if hasattr(transformer, 'pooler'):
+            for param in transformer.pooler.parameters():
+                param.requires_grad = True
+
+        # Optionally, apply a small MLP on top of embeddings
+        self.mlp1 = nn.Sequential(
+            nn.Linear(hidden_dim, hidden_dim // 2),
+            nn.ReLU(),
+            nn.Dropout(0.1)
+        )
+        self.mlp2 = nn.Sequential(
+            nn.Linear(hidden_dim // 2, hidden_dim // 4),
+            nn.ReLU(),
+            nn.Dropout(0.1)
+        )
+
+    def forward(self, q1_input_ids, q1_attention_mask, q2_input_ids, q2_attention_mask):
+        # Prepare features for SentenceTransformer
+        q1_features = {
+            'input_ids': q1_input_ids,
+            'attention_mask': q1_attention_mask
+        }
+        q2_features = {
+            'input_ids': q2_input_ids,
+            'attention_mask': q2_attention_mask
+        }
+
+        # Get sentence embeddings from SentenceTransformer
+        q1_embedding = self.model(q1_features)['sentence_embedding']
+        q2_embedding = self.model(q2_features)['sentence_embedding']
+
+        # Pass through MLP layers
+        q1_reduced = self.mlp2(self.mlp1(q1_embedding))
+        q2_reduced = self.mlp2(self.mlp1(q2_embedding))
+
+        return q1_reduced, q2_reduced
+
+
 # ============================================================
 # Training & Evaluation Functions
 # ============================================================
 def train_one_epoch(model, dataloader, optimizer, device, criterion):
     model.train()
     total_loss = 0
+    all_preds = []
+    all_labels = []
     for batch in tqdm(dataloader, desc="Training"):
         q1_input_ids = batch['q1_input_ids'].to(device)
         q1_attention_mask = batch['q1_attention_mask'].to(device)
@@ -158,8 +187,16 @@ def train_one_epoch(model, dataloader, optimizer, device, criterion):
 
         total_loss += loss.item()
 
+        # Compute predictions for F1 calculation
+        cos_sim = nn.CosineSimilarity(dim=1)(q1_embeddings, q2_embeddings).detach().cpu().numpy()
+        preds = (cos_sim >= 0.5).astype(int)
+        all_preds.extend(preds)
+        all_labels.extend(labels.cpu().numpy())
+
     avg_loss = total_loss / len(dataloader)
-    return avg_loss
+    # Compute training F1 macro
+    f1_macro = f1_score(all_labels, all_preds, average='macro')
+    return avg_loss, f1_macro
 
 
 def eval_model(model, dataloader, device, criterion):
@@ -180,7 +217,6 @@ def eval_model(model, dataloader, device, criterion):
             loss = criterion(q1_embeddings, q2_embeddings, labels)
             total_loss += loss.item()
 
-            # Compute cosine similarity
             cos_sim = nn.CosineSimilarity(dim=1)(q1_embeddings, q2_embeddings).cpu().numpy()
             preds = (cos_sim >= 0.5).astype(int)
             all_preds.extend(preds)
@@ -193,19 +229,20 @@ def eval_model(model, dataloader, device, criterion):
 
     return avg_loss, f1_micro, f1_macro, cohen
 
+
 # ============================================================
 # Main Function
 # ============================================================
 def main():
     # Parameters
     data_path = "../Data/train.csv"  # Update path as needed
-    checkpoint_path = "bert_siamese_model_bert_constrastive.pth"
-    bert_model_name = 'bert-base-uncased'
+    test_data_path = "../Data/test_data.csv"
+    checkpoint_path = "siamese_sbert_model_best_contrastiveLoss_fin_tune.pth"
+    sbert_model_name = 'sentence-transformers/all-MiniLM-L6-v2'
     batch_size = 32
     epochs = 8
-    lr = 1e-5
     max_len = 128
-    fine_tune_layers = 2
+    lr = 3e-5
 
     # Load data
     print("Loading data...")
@@ -225,11 +262,10 @@ def main():
     test_data['is_duplicate'] = y_test.values
 
     # Save the test data to a CSV
-    test_data_path = "../Data/test_data.csv"
     test_data.to_csv(test_data_path, index=False)
 
     # Tokenizer
-    tokenizer = BertTokenizer.from_pretrained(bert_model_name)
+    tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
 
     # Datasets and Dataloaders
     train_dataset = SiameseQuestionsDataset(
@@ -254,61 +290,74 @@ def main():
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
     # Model, Loss, Optimizer
-    model = SiameseBertModel(bert_model_name=bert_model_name, fine_tune_layers=fine_tune_layers).to(device)
+    model = SiameseSentenceBertModel(model_name=sbert_model_name, hidden_dim=384).to(device)
     criterion = ContrastiveLoss(margin=0.8)
-    optimizer = torch.optim.Adam(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
+    optimizer = AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr)
 
-    # Load checkpoint if exists
+    # Initialize metrics
+    train_losses = []
+    val_losses = []
+    val_f1_macros = []
+    train_f1_macros = []
     start_epoch = 0
     best_val_loss = float('inf')
+
+    # Load checkpoint if exists
     if os.path.exists(checkpoint_path):
         print(f"[INFO] Loading checkpoint from {checkpoint_path}...")
         checkpoint = torch.load(checkpoint_path, map_location=device)
         model.load_state_dict(checkpoint['model_state_dict'])
         optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        start_epoch = checkpoint['epoch'] + 1
         best_val_loss = checkpoint['best_val_loss']
-        print(f"[INFO] Resuming training from epoch {start_epoch + 1} with best validation loss {best_val_loss:.4f}")
+        start_epoch = checkpoint['epoch'] + 1
 
-    # Training Metrics Storage
-    train_losses = []
-    val_losses = []
-    f1_macros = []
-    val_f1_macros = []
+        # Load previously saved metrics if available
+        train_losses = checkpoint.get('train_losses', [])
+        val_losses = checkpoint.get('val_losses', [])
+        val_f1_macros = checkpoint.get('val_f1_macros', [])
+        train_f1_macros = checkpoint.get('train_f1_macros', [])
+
+        print(f"[INFO] Resuming training from epoch {start_epoch + 1} with best validation loss {best_val_loss:.4f}")
 
     # Training Loop
     for epoch in range(start_epoch, epochs):
         print(f"Epoch {epoch + 1}/{epochs}")
-        train_loss = train_one_epoch(model, train_loader, optimizer, device, criterion)
+        train_loss, train_f1_macro = train_one_epoch(model, train_loader, optimizer, device, criterion)
         val_loss, f1_micro, f1_macro, cohen = eval_model(model, test_loader, device, criterion)
 
-        train_losses.append(train_loss)
-        val_losses.append(val_loss)
-        f1_macros.append(f1_macro)
-        val_f1_macros.append(f1_macro)
-
-        print(f"Epoch {epoch + 1}, Training Loss: {train_loss:.4f}")
+        print(f"Epoch {epoch + 1}, Training Loss: {train_loss:.4f}, Training F1 Macro: {train_f1_macro:.4f}")
         print(f"Epoch {epoch + 1}, Validation Loss: {val_loss:.4f}")
         print(f"Epoch {epoch + 1}, F1 Micro: {f1_micro:.4f}, F1 Macro: {f1_macro:.4f}, Cohen's Kappa: {cohen:.4f}")
 
-        # Save best model
+        # Append metrics to lists
+        train_losses.append(train_loss)
+        val_losses.append(val_loss)
+        val_f1_macros.append(f1_macro)
+        train_f1_macros.append(train_f1_macro)
+
+        # Save best model and metrics
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save({
                 'epoch': epoch,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
-                'best_val_loss': best_val_loss
+                'best_val_loss': best_val_loss,
+                'train_losses': train_losses,
+                'val_losses': val_losses,
+                'val_f1_macros': val_f1_macros,
+                'train_f1_macros': train_f1_macros
             }, checkpoint_path)
             print(f"[INFO] Model saved with best validation loss: {best_val_loss:.4f}")
 
-    # Plot Metrics
-    plt.figure(figsize=(12, 6))
+    print("[INFO] Training complete.")
 
-    # Loss Plot
+    # ============================================================
+    # Visualization
+    # ============================================================
     plt.figure(figsize=(10, 6))
-    plt.plot(range(1, len(train_losses) + 1), train_losses, label='Train Loss', marker='o')
-    plt.plot(range(1, len(val_losses) + 1), val_losses, label='Val Loss', marker='o')
+    plt.plot(range(1, len(train_losses)+1), train_losses, label='Train Loss', marker='o')
+    plt.plot(range(1, len(val_losses)+1), val_losses, label='Val Loss', marker='o')
     plt.title('Train and Validation Loss')
     plt.xlabel('Epoch')
     plt.ylabel('Loss')
@@ -316,19 +365,14 @@ def main():
     plt.grid(True)
     plt.show()
 
-    # F1 Macro Plot
-    plt.subplot(1, 2, 2)
-    plt.plot(f1_macros, label='Train F1 Macro')
-    plt.plot(val_f1_macros, label='Validation F1 Macro')
-    plt.title('F1 Macro vs. Epochs')
-    plt.xlabel('Epochs')
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(val_f1_macros)+1), val_f1_macros, label='Val F1 Macro', marker='o', color='green')
+    plt.title('Validation F1 Macro over Epochs')
+    plt.xlabel('Epoch')
     plt.ylabel('F1 Macro')
     plt.legend()
-
-    plt.tight_layout()
+    plt.grid(True)
     plt.show()
-
-    print("[INFO] Training complete.")
 
 
 if __name__ == "__main__":
