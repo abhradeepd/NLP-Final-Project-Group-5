@@ -1,0 +1,1 @@
+The `main.py` file orchestrates all the necessary code modules, including pre_processing.py, feature_extraction.py, visualise.py tfidf_new.py and ml algorith  module for all the classical models Simply execute the `main.py` script step by step as outlined in the file.
