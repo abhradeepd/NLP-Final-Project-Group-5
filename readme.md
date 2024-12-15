@@ -1,10 +1,11 @@
 # Quora Question Pair Similarity Classification
 
 ## Members
-- **Abhradeep Das** (G38747350)
-- **Gourab Mukherjee** (G32241729)
 - **Richik Ghosh** (G31267506)
 - **Shreya Sahay** (G36642286)
+- **Gourab Mukherjee** (G32241729)
+- **Abhradeep Das** (G38747350)
+
 
 ---
 
