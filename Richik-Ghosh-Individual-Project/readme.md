@@ -95,8 +95,4 @@ The dataset used in this project is the **Quora Question Pairs** dataset, which 
 - Hugging Face Transformers  
 - CUDA-enabled GPU (recommended)  
 
-### Steps
-1. Clone the repository:
-   ```bash
-   git clone https://github.com/username/quora-question-pair-similarity.git
-   cd quora-question-pair-similarity
+
